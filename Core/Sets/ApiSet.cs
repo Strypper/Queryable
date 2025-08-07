@@ -1,7 +1,6 @@
+using Newtonsoft.Json;
 using System.Collections;
 using System.Linq.Expressions;
-using Newtonsoft.Json;
-using Queryable.Models;
 using Queryable.Core.Queryable;
 
 namespace Queryable.Core.Sets
