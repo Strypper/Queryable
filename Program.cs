@@ -1,4 +1,4 @@
-using Queryable.Core;
+using Queryable.Core.Context;
 using Queryable.Models;
 using Queryable.Demos;
 
@@ -17,7 +17,10 @@ namespace Queryable
             Console.WriteLine("4. Combined Demo (Campaigns + Messages)");
             Console.WriteLine("5. ConsoleApp Demo (includes Add functionality)");
             Console.WriteLine("6. CRUD Demo (DbSet-like interface showcase)");
-            Console.Write("Enter choice (1, 2, 3, 4, 5, or 6): ");
+            Console.WriteLine("7. EndpointBuilder Pattern Demo ⭐ NEW!");
+            Console.WriteLine("8. Version Handling Test 🧪 TEST!");
+            Console.WriteLine("9. Query Style Demo (REST vs OData) 🆕 NEW!");
+            Console.Write("Enter choice (1-9): ");
 
             var choice = Console.ReadLine();
 
@@ -45,6 +48,18 @@ namespace Queryable
                 case "6":
                     Console.WriteLine("🔧 Starting CRUD Demo (DbSet-like interface)...");
                     await CrudDemo.RunCrudDemoAsync();
+                    break;
+                case "7":
+                    Console.WriteLine("⭐ Starting EndpointBuilder Pattern Demo...");
+                    EndpointBuilderDemo.RunDemo();
+                    break;
+                case "8":
+                    Console.WriteLine("🧪 Starting Version Handling Test...");
+                    VersionHandlingTest.TestVersionHandling();
+                    break;
+                case "9":
+                    Console.WriteLine("🆕 Starting Query Style Demo...");
+                    await RunQueryStyleDemo();
                     break;
                 default:
                     Console.WriteLine("❌ Invalid choice. Running CRUD Demo by default...");
@@ -155,6 +170,34 @@ namespace Queryable
             catch (Exception ex)
             {
                 Console.WriteLine($"❌ Error during manual setup: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"   Inner: {ex.InnerException.Message}");
+                }
+            }
+        }
+
+        public static async Task RunQueryStyleDemo()
+        {
+            try
+            {
+                // Tạo context với options
+                var options = new ApiContextOptions
+                {
+                    BaseUrl = "https://api.lightninglanes.com/api"
+                };
+
+                // Create demo context (không gọi API thật)
+                using var httpClient = new HttpClient();
+                var context = new LightningLanesApiContext(options, httpClient);
+
+                // Tạo và chạy demo
+                var demo = new QueryStyleDemo(context);
+                await demo.RunDemo();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Error in Query Style Demo: {ex.Message}");
                 if (ex.InnerException != null)
                 {
                     Console.WriteLine($"   Inner: {ex.InnerException.Message}");

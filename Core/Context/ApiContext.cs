@@ -1,42 +1,60 @@
 using Queryable.Models;
+using Queryable.Core.Sets;
 
-namespace Queryable.Core
+namespace Queryable.Core.Context
 {
-    public class ApiContext : IDisposable
+    public abstract class ApiContext : IDisposable
     {
         private bool _disposed = false;
-        private readonly HttpClient _httpClient;
-        protected HttpClient HttpClient => _httpClient;
-        private readonly ApiContextOptions _options;
-        protected ApiContextOptions Options => _options;
+        protected readonly HttpClient _httpClient;
+        protected readonly ApiContextOptions _options;
 
-        public ApiContext(ApiContextOptions options)
+        protected ApiContext(ApiContextOptions options)
         {
             _options = options ?? throw new ArgumentNullException(nameof(options));
             _httpClient = CreateHttpClient(options);
             
-            // Initialize ApiSets with DbSet-like interface
-            Campaigns = new ApiSet<Campaign>(_httpClient, $"{options.BaseUrl}/campaigns");
-            Messages = new ApiSet<Message>(_httpClient, $"{options.BaseUrl}/messages");
+            // Hook cho derived class register endpoints
+            OnEndpointRegistering();
         }
 
         /// <summary>
         /// Constructor for dependency injection with external HttpClient
         /// </summary>
-        public ApiContext(ApiContextOptions options, HttpClient httpClient)
+        protected ApiContext(ApiContextOptions options, HttpClient httpClient)
         {
             _options = options ?? throw new ArgumentNullException(nameof(options));
             _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
             
-            // Initialize ApiSets with DbSet-like interface
-            Campaigns = new ApiSet<Campaign>(_httpClient, $"{options.BaseUrl}/campaigns");
-            Messages = new ApiSet<Message>(_httpClient, $"{options.BaseUrl}/messages");
+            // Hook cho derived class register endpoints
+            OnEndpointRegistering();
         }
 
-        // DbSet-like access - clean and simple like EF Core DbContext
-        public IApiSet<Campaign> Campaigns { get; }
-        public IApiSet<Message> Messages { get; }
+        /// <summary>
+        /// Hook method for derived classes to register their API endpoints
+        /// </summary>
+        protected virtual void OnEndpointRegistering() { }
 
+        /// <summary>
+        /// Creates an endpoint builder for fluent API configuration
+        /// </summary>
+        protected EndpointBuilder<T> RegisterEndpoint<T>() where T : class
+        {
+            return new EndpointBuilder<T>(_httpClient, _options);
+        }
+
+        /// <summary>
+        /// Simple factory method for basic endpoint creation
+        /// </summary>
+        protected IApiSet<T> CreateApiSet<T>(string endpoint) where T : class
+        {
+            var fullEndpoint = endpoint.StartsWith("/") 
+                ? $"{_options.BaseUrl}{endpoint}" 
+                : $"{_options.BaseUrl}/{endpoint}";
+            return new ApiSet<T>(_httpClient, fullEndpoint);
+        }
+
+        // Infrastructure methods giữ nguyên
         private static HttpClient CreateHttpClient(ApiContextOptions options)
         {
             HttpClientHandler? handler = null;

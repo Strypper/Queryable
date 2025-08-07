@@ -2,7 +2,7 @@ using System.Linq.Expressions;
 using Newtonsoft.Json;
 using Queryable.Models;
 
-namespace Queryable.Core
+namespace Queryable.Core.Queryable
 {
     public class ApiQueryProvider : IQueryProvider
     {
@@ -43,17 +43,21 @@ namespace Queryable.Core
         {
             Console.WriteLine("🔍 Executing LINQ expression...");
             
-            // Dịch Expression Tree thành HTTP query string
-            var visitor = new ExpressionToHttpQueryVisitor();
-            visitor.Visit(expression);
-            var queryString = visitor.ToQueryString();
+            // Determine query style from the expression
+            var queryStyle = GetQueryStyleFromExpression(expression);
+            
+            // Create appropriate visitor based on query style
+            var visitor = QueryVisitorFactory.Create(queryStyle);
+            
+            // Apply expression to visitor (need to implement for IQueryVisitor)
+            var queryString = ApplyExpressionToVisitor(visitor, expression);
 
             // Xây dựng URL đầy đủ
             var requestUrl = string.IsNullOrEmpty(queryString) 
                 ? _baseUrl 
                 : $"{_baseUrl}?{queryString}";
 
-            Console.WriteLine($"🌐 Generated URL: {requestUrl}");
+            Console.WriteLine($"🌐 Generated URL ({queryStyle}): {requestUrl}");
 
             try
             {
@@ -137,6 +141,61 @@ namespace Queryable.Core
                 return FindIEnumerable(seqType.BaseType);
 
             return null;
+        }
+
+        /// <summary>
+        /// Extracts the query style from the expression tree
+        /// </summary>
+        private QueryStyle GetQueryStyleFromExpression(Expression expression)
+        {
+            // Walk the expression tree to find ApiQueryable<T> instances
+            var visitor = new QueryStyleExtractor();
+            visitor.Visit(expression);
+            return visitor.QueryStyle;
+        }
+
+        /// <summary>
+        /// Applies the expression to the visitor and returns the query string
+        /// </summary>
+        private string ApplyExpressionToVisitor(IQueryVisitor visitor, Expression expression)
+        {
+            if (visitor is ExpressionVisitor expressionVisitor)
+            {
+                expressionVisitor.Visit(expression);
+                return visitor.ToQueryString();
+            }
+            
+            // Fallback for non-ExpressionVisitor implementations
+            return string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// Helper visitor to extract QueryStyle from expression tree
+    /// </summary>
+    internal class QueryStyleExtractor : ExpressionVisitor
+    {
+        public QueryStyle QueryStyle { get; private set; } = QueryStyle.Rest; // Default to REST
+
+        protected override Expression VisitConstant(ConstantExpression node)
+        {
+            // Check if the constant is an ApiQueryable of any type
+            if (node.Value != null && node.Value.GetType().IsGenericType)
+            {
+                var genericType = node.Value.GetType().GetGenericTypeDefinition();
+                if (genericType == typeof(ApiQueryable<>))
+                {
+                    // Use reflection to get the QueryStyle
+                    var getQueryStyleMethod = node.Value.GetType().GetMethod("GetQueryStyle", 
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    if (getQueryStyleMethod != null)
+                    {
+                        QueryStyle = (QueryStyle)getQueryStyleMethod.Invoke(node.Value, null)!;
+                    }
+                }
+            }
+            
+            return base.VisitConstant(node);
         }
     }
 }

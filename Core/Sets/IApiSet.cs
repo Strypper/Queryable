@@ -1,6 +1,6 @@
 using System.Linq.Expressions;
 
-namespace Queryable.Core
+namespace Queryable.Core.Sets
 {
     /// <summary>
     /// DbSet-like interface for API entities, combining IQueryable with CRUD operations

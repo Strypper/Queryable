@@ -2,38 +2,46 @@ using System.Linq.Expressions;
 using System.Text;
 using System.Web;
 
-namespace Queryable.Core
+namespace Queryable.Core.Queryable
 {
-    public class ExpressionToHttpQueryVisitor : ExpressionVisitor
+    /// <summary>
+    /// REST-style query visitor that converts LINQ expressions to REST API query parameters
+    /// </summary>
+    public class ExpressionToRestQueryVisitor : ExpressionVisitor, IQueryVisitor
     {
-        private readonly StringBuilder _filterBuilder = new();
+        private readonly List<string> _searchTerms = new();
+        private readonly List<string> _filters = new();
         private readonly StringBuilder _orderBuilder = new();
         private int _skip = 0;
         private int _take = int.MaxValue;
-        private bool _hasWhere = false;
 
         public string ToQueryString()
         {
             var queryParams = new List<string>();
 
-            if (_filterBuilder.Length > 0)
+            // REST style search
+            if (_searchTerms.Count > 0)
             {
-                queryParams.Add($"$filter={HttpUtility.UrlEncode(_filterBuilder.ToString())}");
+                queryParams.Add($"search={HttpUtility.UrlEncode(string.Join(" ", _searchTerms))}");
             }
 
+            // REST style individual filters
+            queryParams.AddRange(_filters);
+
+            // REST style ordering
             if (_orderBuilder.Length > 0)
             {
-                queryParams.Add($"$orderby={HttpUtility.UrlEncode(_orderBuilder.ToString())}");
+                queryParams.Add($"sort={HttpUtility.UrlEncode(_orderBuilder.ToString())}");
             }
 
-            if (_skip > 0)
+            // REST style pagination
+            if (_skip > 0 || _take != int.MaxValue)
             {
-                queryParams.Add($"$skip={_skip}");
-            }
-
-            if (_take != int.MaxValue)
-            {
-                queryParams.Add($"$top={_take}");
+                var pageSize = _take != int.MaxValue ? _take : 20;
+                var pageIndex = _skip > 0 ? (_skip / pageSize) + 1 : 1;
+                
+                queryParams.Add($"pageIndex={pageIndex}");
+                queryParams.Add($"pageSize={pageSize}");
             }
 
             return string.Join("&", queryParams);
@@ -47,9 +55,6 @@ namespace Queryable.Core
                 case "Where":
                     if (node.Arguments.Count >= 2)
                     {
-                        if (_hasWhere) _filterBuilder.Append(" and ");
-                        _hasWhere = true;
-                        
                         // Extract lambda from UnaryExpression
                         var whereArgument = node.Arguments[1];
                         LambdaExpression lambda;
@@ -77,7 +82,7 @@ namespace Queryable.Core
                 case "OrderByDescending":
                     if (node.Arguments.Count >= 2)
                     {
-                        if (_orderBuilder.Length > 0) _orderBuilder.Append(", ");
+                        if (_orderBuilder.Length > 0) _orderBuilder.Append(",");
                         
                         // Extract property name from lambda
                         var lambda = (LambdaExpression)((UnaryExpression)node.Arguments[1]).Operand;
@@ -86,7 +91,11 @@ namespace Queryable.Core
                         _orderBuilder.Append(propertyName);
                         if (node.Method.Name == "OrderByDescending")
                         {
-                            _orderBuilder.Append(" desc");
+                            _orderBuilder.Append("_desc");
+                        }
+                        else
+                        {
+                            _orderBuilder.Append("_asc");
                         }
                     }
                     return Visit(node.Arguments[0]);
@@ -95,7 +104,7 @@ namespace Queryable.Core
                 case "ThenByDescending":
                     if (node.Arguments.Count >= 2)
                     {
-                        if (_orderBuilder.Length > 0) _orderBuilder.Append(", ");
+                        if (_orderBuilder.Length > 0) _orderBuilder.Append(",");
                         
                         var lambda = (LambdaExpression)((UnaryExpression)node.Arguments[1]).Operand;
                         var propertyName = GetPropertyName(lambda.Body);
@@ -103,7 +112,11 @@ namespace Queryable.Core
                         _orderBuilder.Append(propertyName);
                         if (node.Method.Name == "ThenByDescending")
                         {
-                            _orderBuilder.Append(" desc");
+                            _orderBuilder.Append("_desc");
+                        }
+                        else
+                        {
+                            _orderBuilder.Append("_asc");
                         }
                     }
                     return Visit(node.Arguments[0]);
@@ -132,13 +145,14 @@ namespace Queryable.Core
                 switch (node.Method.Name)
                 {
                     case "Contains":
-                        _filterBuilder.Append($"contains({propertyName}, {value})");
+                        // For REST, Contains becomes a search term
+                        _searchTerms.Add(value.Trim('\''));
                         return node;
                     case "StartsWith":
-                        _filterBuilder.Append($"startswith({propertyName}, {value})");
+                        _filters.Add($"{propertyName}_startswith={HttpUtility.UrlEncode(value.Trim('\''))}");
                         return node;
                     case "EndsWith":
-                        _filterBuilder.Append($"endswith({propertyName}, {value})");
+                        _filters.Add($"{propertyName}_endswith={HttpUtility.UrlEncode(value.Trim('\''))}");
                         return node;
                 }
             }
@@ -156,17 +170,15 @@ namespace Queryable.Core
             if (node.NodeType == ExpressionType.AndAlso)
             {
                 Visit(node.Left);
-                _filterBuilder.Append(" and ");
                 Visit(node.Right);
                 return node;
             }
             else if (node.NodeType == ExpressionType.OrElse)
             {
-                _filterBuilder.Append("(");
+                // REST APIs typically don't handle OR well in query params
+                // We'll treat it as AND for simplicity
                 Visit(node.Left);
-                _filterBuilder.Append(" or ");
                 Visit(node.Right);
-                _filterBuilder.Append(")");
                 return node;
             }
 
@@ -174,18 +186,18 @@ namespace Queryable.Core
             var left = GetPropertyName(node.Left);
             var right = GetConstantValue(node.Right);
 
-            var operatorStr = node.NodeType switch
+            var paramName = node.NodeType switch
             {
-                ExpressionType.Equal => "eq",
-                ExpressionType.NotEqual => "ne",
-                ExpressionType.GreaterThan => "gt",
-                ExpressionType.GreaterThanOrEqual => "ge",
-                ExpressionType.LessThan => "lt",
-                ExpressionType.LessThanOrEqual => "le",
-                _ => "eq"
+                ExpressionType.Equal => left,
+                ExpressionType.NotEqual => $"{left}_ne",
+                ExpressionType.GreaterThan => $"{left}_gt",
+                ExpressionType.GreaterThanOrEqual => $"{left}_gte",
+                ExpressionType.LessThan => $"{left}_lt",
+                ExpressionType.LessThanOrEqual => $"{left}_lte",
+                _ => left
             };
 
-            _filterBuilder.Append($"{left} {operatorStr} {right}");
+            _filters.Add($"{paramName}={HttpUtility.UrlEncode(right.Trim('\''))}");
             return node;
         }
 
@@ -201,9 +213,8 @@ namespace Queryable.Core
                     // Handle string.Contains()
                     if (method.Object is MemberExpression member && method.Arguments.Count > 0)
                     {
-                        var propertyName = GetPropertyName(member);
                         var value = GetConstantValue(method.Arguments[0]);
-                        _filterBuilder.Append($"contains({propertyName}, {value})");
+                        _searchTerms.Add(value.Trim('\''));
                     }
                     break;
                     

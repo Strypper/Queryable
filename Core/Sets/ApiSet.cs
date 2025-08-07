@@ -2,8 +2,9 @@ using System.Collections;
 using System.Linq.Expressions;
 using Newtonsoft.Json;
 using Queryable.Models;
+using Queryable.Core.Queryable;
 
-namespace Queryable.Core
+namespace Queryable.Core.Sets
 {
     /// <summary>
     /// DbSet-like implementation for API entities

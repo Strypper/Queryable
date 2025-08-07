@@ -1,6 +1,7 @@
-using Microsoft.Extensions.DependencyInjection;
-using Queryable.Extensions;
+
+using Queryable.Core;
 using Queryable.Models;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Queryable
 {

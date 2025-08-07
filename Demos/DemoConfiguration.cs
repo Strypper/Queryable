@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Queryable.Core;
-using Queryable.Extensions;
 
 namespace Queryable.Demos
 {

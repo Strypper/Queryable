@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
-using Queryable.Core;
+using Queryable.Core.Context;
 
-namespace Queryable.Extensions
+namespace Queryable.Core
 {
     public static class ServiceCollectionExtensions
     {

@@ -1,4 +1,4 @@
-namespace Queryable.Core
+namespace Queryable.Core.Context
 {
     public class ApiContextOptions
     {
